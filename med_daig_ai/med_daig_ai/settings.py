@@ -79,8 +79,12 @@ WSGI_APPLICATION = 'med_daig_ai.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql_psycopg2',
+        'HOST': 'aws-0-ap-south-1.pooler.supabase.com',
+        'NAME': 'postgres',
+        'USER': 'postgres.itptjpnhszzsjkebqblq',
+        'PORT': '6543',
+        'PASSWORD': 'Tanu@781977sr',
     }
 }
 
@@ -131,7 +135,7 @@ load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
+MAILERSEND_API_KEY = os.getenv('MAILERSEND_API_KEY')
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
