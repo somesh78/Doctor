@@ -12,7 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 @api_view(['POST'])
-def register_patient(req):
+def register_doctor(req):
     email = req.data.get('email')
     password = req.data.get('password')
     name = req.data.get('name')
@@ -24,19 +24,19 @@ def register_patient(req):
         })
 
         if response.user:
-            patient = Patient.objects.create(name=name, email=email)    
-            serializer = PatientSerializers(patient)
+            doctor = Doctor.objects.create(name=name, email=email)    
+            serializer = PatientSerializers(doctor)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         else:
             return Response({'error': 'Registration failed in Supabase'}, status=status.HTTP_400_BAD_REQUEST)
     except AuthApiError as e:
-        logger.error(f"Error during patient registration: {str(e)}")
+        logger.error(f"Error during doctor registration: {str(e)}")
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         return Response({'error': 'An unexpected error occurred', 'details': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 @api_view(['POST'])
-def login_patient   (req):
+def login_doctor(req):
     email = req.data.get('email')
     password = req.data.get('password')
     
@@ -55,9 +55,83 @@ def login_patient   (req):
         return Response({'error': 'An unexpected error occurred', 'details': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
+def add_patient(req):
+    doctor_email = req.data.get('doctor_email')
+    doctor = Doctor.objects.filter(email=doctor_email).first()
+
+    if not doctor:
+        return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    name = req.data.get('name')
+    age = req.data.get('age')
+    if not name:
+        return Response({'error': 'Name is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        respnose = supabase.table('patient').insert({
+            'name': name,
+            'age': age,
+            'doctor_id': doctor.id
+        }).execute()
+
+        if respnose.data:
+            patient_id = respnose.data[0]['id']
+            patient = Patient.objects.create(id=patient_id, doctor=doctor, name=name, age=age)
+            serializer = PatientSerializers(patient)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        else:
+            return Response({'error': 'Patient not created in Supabase'}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'error': 'An unexpected error occurred', 'details': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def view_patients(req):
+    doctor_email = req.data.get('doctor_email')
+    doctor = Doctor.objects.filter(email=doctor_email).first()
+
+    if not doctor:
+        return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        patients = Patient.objects.filter(doctor=doctor)
+        serializer = PatientSerializers(patients, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'error': 'An unexpected error occurred', 'details': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['PUT'])
+def update_patient(req):
+    patient_id = req.data.get('patient_id')
+    patient = Patient.objects.filter(id=patient_id).first()
+    if not patient:
+        return Response({'error': 'Patient not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    name = req.data.get('name')
+    age = req.data.get('age')
+
+    try:
+        supabase_update = supabase.table('patient').update({
+            'name': name,
+            'age' : age
+        }).eq('id', patient_id).execute()
+
+        if supabase_update.data:
+            if name:
+                patient.name = name
+            if age is not None:
+                patient.age = age
+            patient.save()
+            serializer = PatientSerializers(patient)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        else:
+            return Response({'error': 'Patient not updated in Supabase'}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'error': 'An unexpected error occurred', 'details': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
 def upload_images(req):
-    patient_email = req.data.get('email')
-    patient = Patient.objects.filter(email=patient_email).first()
+    patient_id = req.data.get('patient_id')
+    patient = Patient.objects.filter(id=patient_id).first()
     if not patient:
         return Response({'error': 'Patient not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -70,52 +144,18 @@ def upload_images(req):
 
 @api_view(['POST'])
 def upload_history(req):
-    patient_email = req.data.get('email')
-    patient = Patient.objects.filter(email=patient_email).first()
+    patient_id = req.data.get('patient_id')
+    patient = Patient.objects.filter(id=patient_id).first()
     if not patient:
         return Response({'error': 'Patient not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    document = req.FILES.get('document')
-    description = req.data.get('description')
-    document_url = upload_to_supabase_storage(document, patient.id)
-    PatientHistory.objects.create(patient=patient, description=description,document_url=document_url)
+    lab_report = req.FILES.get('document')
+    lab_report_url = upload_to_supabase_storage(lab_report, patient.id)
+    PatientHistory.objects.create(patient=patient, lab_report=lab_report,lab_report_url=lab_report_url)
 
     return Response({'message': 'History uploaded successfully'}, status=status.HTTP_201_CREATED)
 
 
 @api_view(['POST'])
 def diagnose_image(req, patient_id):
-    # patient = get_object_or_404(Patient, id=patient_id)
-    # images = MedicalImage.objects.filter(patient=patient, processed=False)
-    # history = PatientHistory.objects.filter(patient=patient)
-    
-    # # Process all images and history
-    # results = []
-    # for image in images:
-    #     img = Image.open(image.image_url)
-    #     processed_image = preprocess_image(img)
-    #     prediction = model.predict(processed_image)
-    #     result = np.argmax(prediction, axis=1)
-    #     confidence = np.max(prediction, axis=1)
-        
-    #     # Save diagnosis result
-    #     diagnosis = Diagnosis.objects.create(
-    #         image=image,
-    #         result=str(result[0]),
-    #         confidence=confidence[0],
-    #         diagnosed_at=timezone.now()
-    #     )
-        
-    #     results.append({
-    #         'image_id': image.id,
-    #         'result': diagnosis.result,
-    #         'confidence': diagnosis.confidence,
-    #         'diagnosed_at': diagnosis.diagnosed_at
-    #     })
-        
-    #     # Mark the image as processed
-    #     image.processed = True
-    #     image.save()
-    
-    # return JsonResponse({'results': results, 'history': list(history.values())})
     pass
